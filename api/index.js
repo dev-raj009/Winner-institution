@@ -1,3 +1,4 @@
+// api/index.js - Optimized for Vercel Serverless
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
@@ -6,7 +7,8 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ============ ALL CONFIGURATIONS IN CODE ============
 const CONFIG = {
@@ -24,9 +26,7 @@ const getHeaders = (referer = CONFIG.REFERER) => ({
   'Accept': 'application/json, text/plain, */*',
   'Accept-Encoding': 'gzip, deflate, br',
   'Accept-Language': 'en-US,en;q=0.9',
-  'Connection': 'keep-alive',
-  'Cache-Control': 'no-cache',
-  'Pragma': 'no-cache'
+  'Connection': 'keep-alive'
 });
 
 // ============ ERROR HANDLING ============
@@ -44,7 +44,9 @@ const handleRequest = async (req, res, apiCall) => {
       data: error.response?.data
     });
     
-    res.status(error.response?.status || 500).json({
+    // Send appropriate error response
+    const statusCode = error.response?.status || 500;
+    res.status(statusCode).json({
       success: false,
       error: error.message || 'Internal server error',
       details: error.response?.data || null,
@@ -59,17 +61,32 @@ app.get('/api/health', (req, res) => {
     success: true,
     status: 'OK',
     timestamp: new Date().toISOString(),
+    version: '2.0.0'
+  });
+});
+
+// ============ ROOT ENDPOINT ============
+app.get('/', (req, res) => {
+  res.json({
+    name: 'StudyKing API Proxy',
     version: '2.0.0',
-    config: {
-      baseUrl: CONFIG.BASE_URL,
-      token: '***' + CONFIG.TOKEN.slice(-10)
-    }
+    status: 'Running',
+    endpoints: {
+      health: '/api/health',
+      batches: '/api/batches?start=0&limit=50',
+      batch: '/api/batches/:batchId',
+      subjects: '/api/batches/:batchId/subjects',
+      topics: '/api/batches/:batchId/subjects/:subjectId/topics',
+      contents: '/api/batches/:batchId/subjects/:subjectId/contents?tid=:topicId',
+      video: '/api/video-details?vid=:videoId'
+    },
+    timestamp: new Date().toISOString()
   });
 });
 
 // ============ MAIN API ENDPOINTS ============
 
-// 1. GET /api/batches - Get all batches with pagination
+// 1. GET /api/batches
 app.get('/api/batches', async (req, res) => {
   await handleRequest(req, res, async () => {
     const { start = 0, limit = 50 } = req.query;
@@ -82,7 +99,7 @@ app.get('/api/batches', async (req, res) => {
   });
 });
 
-// 2. GET /api/batches/:batchId - Get single batch
+// 2. GET /api/batches/:batchId
 app.get('/api/batches/:batchId', async (req, res) => {
   await handleRequest(req, res, async () => {
     const { batchId } = req.params;
@@ -95,7 +112,7 @@ app.get('/api/batches/:batchId', async (req, res) => {
   });
 });
 
-// 3. GET /api/batches/:batchId/subjects - Get subjects for batch
+// 3. GET /api/batches/:batchId/subjects
 app.get('/api/batches/:batchId/subjects', async (req, res) => {
   await handleRequest(req, res, async () => {
     const { batchId } = req.params;
@@ -108,7 +125,7 @@ app.get('/api/batches/:batchId/subjects', async (req, res) => {
   });
 });
 
-// 4. GET /api/batches/:batchId/subjects/:subjectId/topics - Get topics
+// 4. GET /api/batches/:batchId/subjects/:subjectId/topics
 app.get('/api/batches/:batchId/subjects/:subjectId/topics', async (req, res) => {
   await handleRequest(req, res, async () => {
     const { batchId, subjectId } = req.params;
@@ -122,7 +139,7 @@ app.get('/api/batches/:batchId/subjects/:subjectId/topics', async (req, res) => 
   });
 });
 
-// 5. GET /api/batches/:batchId/subjects/:subjectId/contents - Get contents by topic
+// 5. GET /api/batches/:batchId/subjects/:subjectId/contents
 app.get('/api/batches/:batchId/subjects/:subjectId/contents', async (req, res) => {
   await handleRequest(req, res, async () => {
     const { batchId, subjectId } = req.params;
@@ -142,7 +159,7 @@ app.get('/api/batches/:batchId/subjects/:subjectId/contents', async (req, res) =
   });
 });
 
-// 6. GET /api/video-details - Get video details
+// 6. GET /api/video-details
 app.get('/api/video-details', async (req, res) => {
   await handleRequest(req, res, async () => {
     const { vid } = req.query;
@@ -160,33 +177,7 @@ app.get('/api/video-details', async (req, res) => {
   });
 });
 
-// 7. GET /api/search - Search (POST)
-app.post('/api/search', async (req, res) => {
-  await handleRequest(req, res, async () => {
-    const { query, filters = {} } = req.body;
-    const url = `${CONFIG.BASE_URL}/winners/search`;
-    const response = await axios.post(url, { query, filters }, {
-      headers: getHeaders(),
-      timeout: 30000
-    });
-    return response.data;
-  });
-});
-
-// 8. GET /api/subject/:subjectId - Get subject details
-app.get('/api/subjects/:subjectId', async (req, res) => {
-  await handleRequest(req, res, async () => {
-    const { subjectId } = req.params;
-    const url = `${CONFIG.BASE_URL}/winners/subjects/${subjectId}`;
-    const response = await axios.get(url, { 
-      headers: getHeaders(),
-      timeout: 30000
-    });
-    return response.data;
-  });
-});
-
-// 9. GET /api/batches/:batchId/subjects/:subjectId - Get subject details for batch
+// 7. GET /api/batches/:batchId/subjects/:subjectId - Get subject details
 app.get('/api/batches/:batchId/subjects/:subjectId', async (req, res) => {
   await handleRequest(req, res, async () => {
     const { batchId, subjectId } = req.params;
@@ -196,26 +187,6 @@ app.get('/api/batches/:batchId/subjects/:subjectId', async (req, res) => {
       timeout: 30000
     });
     return response.data;
-  });
-});
-
-// ============ ROOT ENDPOINT ============
-app.get('/', (req, res) => {
-  res.json({
-    name: 'StudyKing API Proxy',
-    version: '2.0.0',
-    status: 'Running',
-    endpoints: {
-      health: '/api/health',
-      batches: '/api/batches?start=0&limit=50',
-      batch: '/api/batches/:batchId',
-      subjects: '/api/batches/:batchId/subjects',
-      topics: '/api/batches/:batchId/subjects/:subjectId/topics',
-      contents: '/api/batches/:batchId/subjects/:subjectId/contents?tid=:topicId',
-      video: '/api/video-details?vid=:videoId',
-      search: '/api/search (POST)'
-    },
-    timestamp: new Date().toISOString()
   });
 });
 
@@ -230,9 +201,9 @@ app.use((req, res) => {
   });
 });
 
-// ============ Error Handler ============
+// ============ Global Error Handler ============
 app.use((err, req, res, next) => {
-  console.error('Server Error:', err);
+  console.error('Global Error:', err);
   res.status(500).json({
     success: false,
     error: 'Internal server error',
@@ -260,9 +231,6 @@ if (require.main === module) {
     console.log('  GET  /api/batches/:batchId/subjects/:subjectId/topics');
     console.log('  GET  /api/batches/:batchId/subjects/:subjectId/contents?tid=123');
     console.log('  GET  /api/video-details?vid=123');
-    console.log('  GET  /api/subjects/:subjectId');
-    console.log('  POST /api/search');
-    console.log('\n🔑 Token: ***' + CONFIG.TOKEN.slice(-10));
     console.log('===============================');
   });
 }
